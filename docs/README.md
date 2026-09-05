@@ -1,6 +1,6 @@
-# Project Aninag — Documentation Suite
+# Project FixMyTown — Documentation Suite
 
-Project Aninag is a cloud-native **Local Government Operations Platform** for the Philippines. It launches with a single module — **Citizen Incident Reporting** — built on an architecture designed from day one to scale into a full multi-tenant operating system for cities, municipalities, and eventually provincial and national government agencies.
+Project FixMyTown is a cloud-native **Local Government Operations Platform** for the Philippines. It launches with a single module — **Citizen Incident Reporting** — built on an architecture designed from day one to scale into a full multi-tenant operating system for cities, municipalities, and eventually provincial and national government agencies.
 
 This folder contains the enterprise documentation set for the platform. It covers the Core MVP scope: everything needed to take the Incident Reporting module from concept to a build-ready engineering plan, on a foundation that does not need to be re-architected as new modules, cities, or government tiers are added.
 
@@ -22,7 +22,7 @@ This folder contains the enterprise documentation set for the platform. It cover
 
 ## Explicitly out of scope for this pass
 
-Per the source brief's [Documentation Strategy](../initial-project-aninag.md), the following were deferred until UI/UX and codebase decisions exist to document against — request them individually when ready:
+Per the source brief's [Documentation Strategy](../initial-project-fixmytown.md), the following were deferred until UI/UX and codebase decisions exist to document against — request them individually when ready:
 
 - **User Stories** (derivable once wireframes exist — Functional Requirements cover the same ground at system level for now)
 - **Business Rules** (partially covered inline in Functional Requirements and the Workflow Engine section of Architecture; a standalone rules catalog makes more sense once the Workflow Engine's rule DSL is designed)
@@ -32,4 +32,4 @@ Per the source brief's [Documentation Strategy](../initial-project-aninag.md), t
 
 ## Source
 
-All documents trace back to the original founding brief: [`initial-project-aninag.md`](../initial-project-aninag.md).
+All documents trace back to the original founding brief: [`initial-project-fixmytown.md`](../initial-project-fixmytown.md).

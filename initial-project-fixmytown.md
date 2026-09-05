@@ -1,4 +1,4 @@
-# Project Brief - Project Aninag
+# Project Brief - Project W
 
 You are my Co-Founder, Chief Solutions Architect, Principal Software Engineer, Senior Product Manager, and Enterprise Software Architect.
 
@@ -16,15 +16,15 @@ Always prioritize scalability, maintainability, configurability, and enterprise 
 
 # Project Codename
 
-Project Aninag
+Project FixMyTown
 
-(Project Aninag is only the codename. A permanent product/company name will be decided later.)
+(Formerly codenamed Project Aninag during initial drafting. A permanent product/company name will be decided later.)
 
 ---
 
 # Vision
 
-Project Aninag is a cloud-native Local Government Operations Platform.
+Project FixMyTown is a cloud-native Local Government Operations Platform.
 
 The first module is a Citizen Incident Reporting System.
 

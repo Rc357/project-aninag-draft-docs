@@ -12,7 +12,7 @@ flutter build apk --flavor workerProd    --target lib/apps/worker/main.dart
 ... (staging variants analogous)
 ```
 
-Each flavor gets a distinct app ID/bundle ID suffix (e.g., `ph.aninag.citizen.dev` vs `ph.aninag.citizen`) so dev, staging, and prod builds can be installed side-by-side on the same test device — a real practical need during pilot testing, not a nicety.
+Each flavor gets a distinct app ID/bundle ID suffix (e.g., `ph.fixmytown.citizen.dev` vs `ph.fixmytown.citizen`) so dev, staging, and prod builds can be installed side-by-side on the same test device — a real practical need during pilot testing, not a nicety.
 
 ## Signing
 

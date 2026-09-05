@@ -107,7 +107,7 @@ erDiagram
     WORKFLOW_DEFINITION {
         uuid id PK
         uuid organization_id FK
-        string case_type "IncidentReport|Permit|Appointment (future)"
+        string case_type "IncidentReport|AssistanceRequest|Permit|Appointment (future)"
         int version
         boolean is_active
     }
@@ -158,7 +158,11 @@ erDiagram
     REPORT }o--|| REPORT_CATEGORY : categorized_as
     REPORT }o--o| REPORT : "duplicate_of (self-ref)"
     REPORT ||--|| WORKFLOW_INSTANCE : "backed by"
+    REPORT_CATEGORY }o--|| CATEGORY_GROUP : grouped_under
     REPORT_CATEGORY }o--|| DEPARTMENT : "default routes to"
+    REPORT_CATEGORY ||--o{ BARANGAY_CATEGORY_CONFIG : "overridden per barangay"
+    BARANGAY_CATEGORY_CONFIG }o--|| BARANGAY : scopes_to
+    BARANGAY_CATEGORY_CONFIG }o--o| DEPARTMENT : "barangay-specific route override"
 
     REPORT {
         uuid id PK
@@ -178,15 +182,34 @@ erDiagram
         timestamptz sla_due_at
         timestamptz created_at
     }
+    CATEGORY_GROUP {
+        uuid id PK
+        uuid organization_id FK
+        string name "e.g. Infrastructure & Roads, Sanitation & Waste"
+        int sort_order
+        boolean is_active
+    }
     REPORT_CATEGORY {
         uuid id PK
         uuid organization_id FK
+        uuid category_group_id FK
         string name
+        string report_kind "complaint | request"
         string default_priority
         interval default_sla
         boolean requires_inspection
         boolean requires_emergency_escalation
         boolean is_active
+    }
+    BARANGAY_CATEGORY_CONFIG {
+        uuid id PK
+        uuid organization_id FK
+        uuid barangay_id FK
+        uuid category_id FK
+        boolean is_enabled
+        string priority_override "nullable, falls back to REPORT_CATEGORY.default_priority"
+        interval sla_override "nullable, falls back to REPORT_CATEGORY.default_sla"
+        uuid department_id FK "nullable, overrides REPORT_CATEGORY's default department"
     }
     REPORT_ATTACHMENT {
         uuid id PK
@@ -202,6 +225,14 @@ erDiagram
 
 **Design note — GPS as `geography`, not two floats:** using PostGIS `GEOGRAPHY(Point, 4326)` rather than separate `latitude`/`longitude` columns is what makes FR-3.1's radius-based duplicate search and FR-4.1's point-in-polygon barangay resolution simple, correct, and index-accelerated (`GIST` index) queries rather than manually implemented haversine math in application code — the latter is a common source of subtle correctness bugs (e.g., mishandling the antimeridian, or radius math that's wrong at scale) that PostGIS has already solved and battle-tested.
 
+**Design note — `BarangayCategoryConfig` is a sparse override, not a per-barangay copy of the catalog:** `ReportCategory` still belongs to the organization (city) — FR-11's City Hall Administrator manages one citywide catalog, not one per barangay. `BarangayCategoryConfig` exists only where a barangay's reality differs from the city default: disabling a category it doesn't need, or overriding priority/SLA/routing department (e.g., a flood-prone barangay escalates Drainage/Flooding faster than others). This is also where FR-4.2's already-specified "(Category × Barangay) configuration mapping" for department routing concretely lives — it isn't new scope, it's the table that requirement was always going to need. **Absence of a row for a (barangay, category) pair means "inherit the city default," not "disabled"** — so onboarding a new barangay needs zero override rows to get sane defaults, consistent with FR-13.1's <1-business-day onboarding target ([FR-15.2](04-functional-requirements.md#fr-15--category-taxonomy-groups-barangay-overrides--request-routing)).
+
+**Design note — category selection happens before the barangay is known:** in the citizen app's report flow (category → capture → review), the category is picked before GPS is captured, so `BarangayCategoryConfig.is_enabled = false` cannot filter the category picker at selection time — the barangay isn't resolved until FR-4.1 runs against the captured GPS. The category screen renders the organization-wide active catalog; a category disabled for the citizen's resolved barangay is instead caught server-side at submission time (the same place FR-4.1/FR-4.2 already run), with a clear rejection reason rather than a silent drop or reroute (FR-15.3). Expected to be a rare path in practice — overrides are the exception, not the rule.
+
+**Design note — `report_kind` reuses the Workflow Engine instead of forking the schema:** `ReportCategory.report_kind` (`complaint` | `request`) distinguishes categories like "Requests for Assistance" that need different handling (e.g., relief/medical aid intake) from standard incident complaints. A `request`-kind category simply resolves to a different `WorkflowDefinition.case_type` (`AssistanceRequest`, alongside `IncidentReport`) — reusing the generic Workflow Engine (FR-14) rather than forking `Report`/`ReportAttachment` into parallel tables. **The actual states/transitions for `AssistanceRequest` are out of scope here** — this only makes the data model capable of routing a request differently; the request-handling workflow itself needs its own requirements pass before implementation (FR-15.4).
+
+**Open flag — two categories may describe the same physical issue:** the submitted catalog includes both "Broken Streetlights" (Infrastructure & Roads) and "Street Lighting Safety Concerns" (Public Safety & Peace) — acknowledged as overlapping in the source list itself. Because FR-3.1's duplicate check matches "for the same category," two citizens reporting the same broken streetlight under these two different categories won't be caught as duplicates. Not resolved in this change — either merge into one category with `is_priority` covering both intents, or accept the dedup gap for this specific pair. Worth a decision before this ships, not urgent for the schema itself.
+
 ## Indexing strategy (MVP-critical)
 
 | Index | Purpose |
@@ -211,6 +242,7 @@ erDiagram
 | `barangay_boundary USING GIST(polygon)` | Same |
 | `workflow_event(workflow_instance_id, occurred_at)` | Audit trail retrieval for a single case |
 | `user_role_assignment(user_id, organization_id)` | Auth/permission resolution on every authenticated request — must be fast, it's on the hot path |
+| `barangay_category_config(barangay_id, category_id)` UNIQUE | Override lookup at submission time (FR-4.2/FR-15.2) — one row max per (barangay, category) pair |
 
 **Deliberate denormalization called out:** to avoid an expensive join to `WorkflowInstance`/`WorkflowState` on every dashboard query, `Report` maintains a denormalized `current_state_code` column, updated transactionally in the same write as the `WorkflowEvent` insert. This is a standard CQRS-adjacent read-optimization, not a violation of "status lives in the workflow engine" — the `WorkflowInstance` remains the source of truth; the denormalized column is a cache invalidated within the same transaction, never written independently.
 
@@ -218,3 +250,37 @@ erDiagram
 
 - `WORKFLOW_EVENT` (audit log) is retained indefinitely by default — it is the platform's accountability record and a likely subject of future transparency/FOI requirements.
 - Citizen accounts support data-subject erasure requests (RA 10173 compliance, see [Security](09-security.md#compliance)): PII fields on `USER_ACCOUNT` are nulled/anonymized on request, but `WORKFLOW_EVENT` and `REPORT` rows are retained with the actor reference pointing to an anonymized placeholder, preserving audit integrity without retaining erasable PII.
+
+## Seed Data — Default Category Catalog
+
+Initial `CategoryGroup`/`ReportCategory` load for a new City tenant (FR-13.1). All rows are `report_kind: complaint` unless noted. `is_priority` is set only where explicitly flagged at intake — it is not inferred for every category that sounds urgent, to avoid priority inflation diluting the signal for the ones that are actually flagged.
+
+| Group | Category | report_kind | is_priority | Notes |
+|---|---|---|---|---|
+| Infrastructure & Roads | Potholes/Road Damage | complaint | | |
+| Infrastructure & Roads | Broken Streetlights | complaint | | overlaps "Street Lighting Safety Concerns" below — see open flag above |
+| Infrastructure & Roads | Damaged Sidewalks | complaint | | |
+| Infrastructure & Roads | Drainage/Flooding Issues | complaint | | |
+| Infrastructure & Roads | Broken Public Facilities | complaint | | benches, waiting sheds, restrooms, plaza equipment |
+| Sanitation & Waste | Uncollected Garbage | complaint | | missed pickup, overflowing bins |
+| Sanitation & Waste | Illegal Dumping | complaint | | vacant lots, waterways, roadsides |
+| Sanitation & Waste | Sewage/Wastewater Issues | complaint | | leaking/overflowing septic or sewage lines |
+| Sanitation & Waste | Public Area Cleanliness | complaint | | markets, parks, common areas |
+| Public Safety & Peace | Street Lighting Safety Concerns | complaint | **yes** | dark areas prone to crime; overlaps "Broken Streetlights" above |
+| Public Safety & Peace | Noise Complaints | complaint | | |
+| Public Safety & Peace | Stray Animals | complaint | | aggressive/unmanaged dogs or cats |
+| Public Safety & Peace | Vandalism | complaint | | graffiti, property damage |
+| Public Safety & Peace | Illegal Structures | complaint | | unauthorized construction, informal settlers on public land |
+| Health & Environment | Mosquito/Pest Breeding Sites | complaint | | stagnant water, dengue-prone areas |
+| Health & Environment | Air/Water Pollution | complaint | | smoke-belching, foul odor, contaminated water |
+| Health & Environment | Illegal Vending/Health Violations | complaint | | unsanitary food stalls, unlicensed vendors |
+| Traffic & Transportation | Traffic Violations | complaint | | illegal parking, colorum vehicles, obstruction |
+| Traffic & Transportation | Damaged Traffic Signs/Signals | complaint | | |
+| Traffic & Transportation | Public Transport Complaints | complaint | | overcharging, reckless driving |
+| Utilities | Water Supply Issues | complaint | | leaks, low pressure, no supply |
+| Utilities | Power Outage/Electrical Hazards | complaint | | exposed wires, recurring outages |
+| Utilities | Internet/Telecom Infrastructure | complaint | | fallen cables, damaged poles |
+| Social Services & Welfare | Missing/Damaged Public Signage | complaint | | barangay info, evacuation routes |
+| Social Services & Welfare | Requests for Assistance | **request** | | relief goods, medical aid — routes to a distinct workflow, see `report_kind` design note above |
+
+25 categories across 7 groups. Seeded per-organization at tenant onboarding (FR-13.1); no `BarangayCategoryConfig` rows are seeded by default — every barangay inherits the city catalog as-is until a City Hall Administrator overrides one.

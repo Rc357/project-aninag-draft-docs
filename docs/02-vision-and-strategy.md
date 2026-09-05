@@ -17,7 +17,7 @@ Every architectural decision in this documentation set is evaluated against one 
 
 ## Vision statement
 
-> Within 5 years, Project Aninag is the default digital backbone that Philippine LGUs use to manage every citizen-facing government process — from a pothole report to a business permit — with citizens able to track any request in one app and LGUs able to run their operations from one console.
+> Within 5 years, Project FixMyTown is the default digital backbone that Philippine LGUs use to manage every citizen-facing government process — from a pothole report to a business permit — with citizens able to track any request in one app and LGUs able to run their operations from one console.
 
 ## Target users
 

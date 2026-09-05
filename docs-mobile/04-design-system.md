@@ -9,7 +9,7 @@ The mockup deliberately committed to a single fixed visual language regardless o
 ## Color tokens
 
 ```dart
-class AninagColors {
+class FmtColors {
   static const ink        = Color(0xFF16211D);
   static const paper      = Color(0xFFF4F1E6);
   static const surface    = Color(0xFFFFFFFF);
@@ -51,8 +51,8 @@ No separate monospace font asset is bundled — `FontFeature.tabularFigures()` o
 ## Spacing & radius scale
 
 ```dart
-class AninagSpace { static const xs=4.0, sm=8.0, md=12.0, lg=16.0, xl=24.0, xxl=32.0; }
-class AninagRadius { static const tile=13.0, card=14.0, button=12.0, pill=999.0; }
+class FmtSpace { static const xs=4.0, sm=8.0, md=12.0, lg=16.0, xl=24.0, xxl=32.0; }
+class FmtRadius { static const tile=13.0, card=14.0, button=12.0, pill=999.0; }
 ```
 
 Applied via `Row`/`Column`/`Wrap` `spacing`/`runSpacing` (Flutter 3.27+) or explicit `SizedBox` gaps between siblings — never accumulated margins on individual children, for the same reason the web design system avoids margin-collapse ambiguity: one source of truth for the gap between two elements, not two children each contributing half.
@@ -61,7 +61,7 @@ Applied via `Row`/`Column`/`Wrap` `spacing`/`runSpacing` (Flutter 3.27+) or expl
 
 | Widget                                        | Maps to mockup element                     | Key behavior                                                                                                                                                                                                                                                       |
 | --------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AninagPrimaryButton` / `AninagOutlineButton` | `.btn-primary` / `.btn-outline`            | Full-width by default; disabled state uses a desaturated fill, never just lowered opacity (opacity alone can fail contrast checks)                                                                                                                                 |
+| `FmtPrimaryButton` / `FmtOutlineButton` | `.btn-primary` / `.btn-outline`            | Full-width by default; disabled state uses a desaturated fill, never just lowered opacity (opacity alone can fail contrast checks)                                                                                                                                 |
 | `StatusChip`                                  | `.chip-pending/-progress/-resolved/-alert` | Takes a `ReportStatus` enum, not a raw color — prevents a screen from inventing a new ad hoc status color                                                                                                                                                          |
 | `ReportCard`                                  | `.card` with `.stripe`                     | Severity-color left stripe is a required parameter, not optional styling — encodes state in form, not just the chip text, per accessibility redundancy (color is never the _only_ signal — see [Performance & Accessibility](11-performance-and-accessibility.md)) |
 | `CategoryTile`                                | `.category-tile`                           | Visual tile can stay compact, but **minimum 48×48dp tap target** is enforced via `InkWell` hit-area padding regardless of visual icon size — see the touch-target note below                                                                                       |

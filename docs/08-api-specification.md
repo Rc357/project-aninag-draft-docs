@@ -4,7 +4,7 @@
 
 - **Style:** REST over HTTPS, JSON bodies. GraphQL was considered and rejected for MVP — the client set (a handful of purpose-built screens per role) doesn't have the heterogeneous query-shape problem GraphQL solves, and REST's simplicity/tooling maturity wins for a small team; revisit only if the Executive Dashboard's `[FUTURE]` cross-tenant analytics needs genuinely justify it.
 - **Versioning:** URL path versioning, `/api/v1/...`. Chosen over header-based versioning for debuggability (visible in logs, curl-able without extra headers) — appropriate given the API has a small, controlled set of first-party clients, not a public third-party developer ecosystem yet.
-- **Base URL shape:** `https://api.aninag.gov.ph/v1/...` (illustrative — actual domain pending product naming).
+- **Base URL shape:** `https://api.fixmytown.gov.ph/v1/...` (illustrative — actual domain pending product naming).
 - **Auth:** Bearer JWT in `Authorization` header, issued by the Identity module. Tenant (`organization_id`) and role/scope claims are embedded in the token, never accepted as a request parameter (see [Security — Tenant Isolation](09-security.md#tenant-isolation)).
 - **Pagination:** cursor-based (`?cursor=...&limit=...`), not offset — offset pagination degrades on large, frequently-mutated queues like the Barangay report queue.
 - **Errors:** RFC 7807 Problem Details (`application/problem+json`) — `type`, `title`, `status`, `detail`, `instance`, plus an `errors` array for field-level validation failures. Standardizing on this now avoids each client team inventing its own error-shape parsing.
@@ -41,13 +41,16 @@
 | `/reports/{id}/transition` | POST | Worker (assigned only) | Generic state transition through the Workflow Engine (FR-6.3): body specifies target state + required evidence refs (photo attachment IDs) |
 | `/departments/{id}/workload` | GET | Department Head | Team workload view |
 
+Note: `POST /reports` shall reject with `422` (category disabled for the resolved barangay) if the submitted `categoryId` has `is_enabled: false` in `BarangayCategoryConfig` for the barangay resolved from the submitted GPS coordinate (FR-15.3) — checked server-side, since the category is picked before the barangay is known client-side.
+
 Note: `/reports/{id}/transition` is deliberately generic (targets *any* valid next state per the Workflow Engine's transition rules for the report's category) rather than one bespoke endpoint per lifecycle step (`/start`, `/upload-before`, `/complete`...). This mirrors the Workflow Engine's design ([Architecture](06-architecture.md#workflow-engine)): the API surface for state changes should not need to grow every time a new workflow state is configured for a tenant.
 
 ## Configuration (City Hall Administrator)
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/admin/categories` | GET/POST/PATCH | Manage report categories (FR-11) |
+| `/admin/categories` | GET/POST/PATCH | Manage the citywide category catalog, grouped by category group (FR-11, FR-15.1) |
+| `/admin/barangays/{id}/categories` | GET/PATCH | View/override category enablement, priority, SLA, or routing for one barangay (FR-15.2) — absence of an override means inherit the city default |
 | `/admin/departments` | GET/POST/PATCH | Manage departments |
 | `/admin/barangays` | GET/POST/PATCH | Manage barangays, including boundary GeoJSON import |
 | `/admin/workflow-definitions/{caseType}` | GET/PATCH | View/edit the active workflow definition for a case type (FR-14) |
@@ -93,7 +96,7 @@ Content-Type: multipart/form-data
   "status": "PendingAIValidation",
   "categoryId": "b3f...",
   "createdAt": "2026-07-26T08:15:00Z",
-  "trackingUrl": "https://app.aninag.gov.ph/reports/9a12..."
+  "trackingUrl": "https://app.fixmytown.gov.ph/reports/9a12..."
 }
 ```
 
@@ -103,7 +106,7 @@ Content-Type: multipart/form-data
 422 Unprocessable Entity
 Content-Type: application/problem+json
 {
-  "type": "https://api.aninag.gov.ph/errors/validation",
+  "type": "https://api.fixmytown.gov.ph/errors/validation",
   "title": "One or more fields are invalid.",
   "status": 422,
   "errors": [

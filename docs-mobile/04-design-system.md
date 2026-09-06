@@ -98,6 +98,7 @@ Applied via `Row`/`Column`/`Wrap` `spacing`/`runSpacing` (Flutter 3.27+) or expl
 | `Timeline` / `TimelineStep`                   | `.timeline`                                | Renders a `List<WorkflowStepStatus>` from the API's workflow state — presentation-only, no business logic about _which_ steps exist (that's server/workflow-engine-defined, per [Architecture — Workflow Engine](../docs/06-architecture.md#workflow-engine))      |
 | `StepperDots`                                 | `.stepper-mini`                            | Multi-step form progress (category → capture → review)                                                                                                                                                                                                             |
 | `SlaCountdownText`                            | `.sla`                                     | Ticking countdown using `mono` type; color escalates `blue → amber → red` as the SLA deadline approaches, thresholds sourced from the category's configured SLA, not hardcoded                                                                                     |
+| `AppBottomNav`'s notifications badge | new — no mockup element yet | A `Badge` wrapping the tab icon, showing the unread count from `unreadNotificationCountProvider` — same pattern as any other social app's tab badge. Hidden entirely (not a "0") when the count is zero, via `isLabelVisible` |
 
 ## Touch targets — a deliberate departure from the mockup's visual density
 

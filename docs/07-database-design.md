@@ -299,6 +299,33 @@ erDiagram
 
 **Design note — reuses Barangay Staff, not a new moderation role:** flagged comments surface to the same Barangay Staff role that already reviews reports (FR-5), scoped to their barangay via the existing `scope_barangay_id` role assignment — no new `ROLE` value, no new RBAC scope concept. Consistent with FR-18.2's "reuse the human backstop that already exists" framing.
 
+## 6. Notifications (FR-21)
+
+```mermaid
+erDiagram
+    REPORT ||--o{ NOTIFICATION : generates
+    USER_ACCOUNT ||--o{ NOTIFICATION : receives
+
+    NOTIFICATION {
+        uuid id PK
+        uuid organization_id FK
+        uuid user_id FK "recipient — always the report's submitter, FR-21.1"
+        string kind "reaction | comment | verified | status_change"
+        uuid report_id FK
+        string actor_username "nullable — null for system-driven kinds (verified/status_change)"
+        string reaction_kind "nullable — support | dispute, kind=reaction only"
+        string new_state_code "nullable — kind=status_change only"
+        boolean is_read "default false"
+        timestamptz created_at
+    }
+```
+
+**Design note — populated by triggers only, never client-written:** every `NOTIFICATION` row is inserted by a `security definer` trigger on `REPORT_REACTION`/`REPORT_COMMENT`/`REPORT` — the client's only write path is flipping `is_read`. This mirrors `WORKFLOW_EVENT`'s "the client has no business supplying facts about itself" posture, just applied to a table the client actually reads back (unlike `WORKFLOW_EVENT`, this one needs a `select` policy scoped to the recipient).
+
+**Design note — `actor_username` denormalized, not joined at read time:** `NOTIFICATION` has two foreign keys into `USER_ACCOUNT` (the recipient `user_id`, and conceptually an actor) — PostgREST can't auto-embed a table reached by two different FKs without an explicit constraint-name hint. Capturing the actor's username once, at insert time, avoids that ambiguity entirely rather than working around it on every read.
+
+**Design note — structured facts, not a pre-rendered message:** `kind`/`reaction_kind`/`new_state_code` are stored as data, not as a formatted sentence — the mobile client builds the display string itself (`AppNotification.body`), reusing `ReportStatus.label`'s existing formatting rather than duplicating it as string concatenation in a Postgres trigger. Keeps status-label wording in exactly one place.
+
 ## Indexing strategy (MVP-critical)
 
 | Index | Purpose |

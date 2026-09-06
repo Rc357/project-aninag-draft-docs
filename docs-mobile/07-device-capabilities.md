@@ -2,11 +2,13 @@
 
 ## Camera — capture only, no gallery picker
 
-**Decision:** photo capture (citizen report photos, FR-1.2; Worker before/after photos, FR-6.4) uses `image_picker` restricted to `ImageSource.camera` — the OS gallery is never offered as a source, on either screen.
+**Decision:** photo/video capture (citizen report media, FR-1.2/FR-20.2; Worker before/after photos, FR-6.4) uses `image_picker` restricted to `ImageSource.camera` — the OS gallery is never offered as a source, on either screen.
 
 This is a deliberate anti-spam and evidence-integrity choice, not an oversight: [AI Design — Spam Detection](../docs/10-ai-design.md#2-spam-detection) already treats recycled/stock images as a known abuse pattern, and [Security — Preventing Spam & Abuse](../docs/09-security.md#preventing-spam--abuse) lists photo capture as the first line of defense. Forcing live capture closes that gap at the source instead of relying entirely on server-side perceptual-hash detection after the fact. The same logic applies even more directly to Worker before/after photos — those are evidence a job was actually done, and allowing a gallery-sourced "after" photo would undermine the entire before/after evidence model this workflow is designed around.
 
 **EXIF handling:** immediately after capture, the `image` package strips all EXIF metadata (device identifiers, embedded GPS) before the file is queued for upload — consistent with [Security — Data Protection](../docs/09-security.md#data-protection), which treats the app's own explicit GPS capture (below), not photo EXIF, as the authoritative location source. The photo is evidence of the issue; it is never trusted as evidence of *where*.
+
+**Video (FR-20.2):** an alternative to photo, not an addition — a report has one or the other, never both. Recorded via `image_picker`'s camera source with a 3-minute `maxDuration`, then compressed on-device before upload (`flutter_compress`'s `forSocialMedia` preset: 1080p cap, H.264) — see [Functional Requirements — FR-20.3](../docs/04-functional-requirements.md#fr-20--feed-visibility--media) for why compression happens client-side rather than server-side. Recording video captures an audio track, which is what actually requires the microphone permission below — there is no separate "record without audio" option, since stripping audio client-side after the fact would cost the same compression pass anyway.
 
 ## Location — foreground-only, "when in use"
 
@@ -23,10 +25,12 @@ If a future module (e.g., real-time worker dispatch/ETA) genuinely needs backgro
 
 | Platform | Permission | Used for |
 |---|---|---|
-| iOS (`Info.plist`) | `NSCameraUsageDescription` | Report/job photo capture |
+| iOS (`Info.plist`) | `NSCameraUsageDescription` | Report/job photo/video capture |
+| iOS | `NSMicrophoneUsageDescription` | Video's audio track (FR-20.2) |
 | iOS | `NSLocationWhenInUseUsageDescription` | Report location, job transition location |
 | iOS | (no `NSPhotoLibraryUsageDescription`) | Not requested — gallery access is intentionally never used |
-| Android (`AndroidManifest.xml`) | `CAMERA` | Report/job photo capture |
+| Android (`AndroidManifest.xml`) | `CAMERA` | Report/job photo/video capture |
+| Android | `RECORD_AUDIO` | Video's audio track (FR-20.2) |
 | Android | `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | GPS capture |
 | Android | `POST_NOTIFICATIONS` (API 33+) | Push notifications (see below) |
 | Both | Internet/network state | Standard API access |

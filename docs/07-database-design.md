@@ -70,12 +70,15 @@ erDiagram
     USER_ACCOUNT {
         uuid id PK
         uuid organization_id FK "nullable for Guest"
-        string auth_provider "google|apple|email|phone|guest"
+        string auth_provider "google|apple|email|phone|facebook|guest"
         string external_subject_id
-        string display_name
+        string username "unique, public-facing — see design note below"
+        string display_name "real name where a provider supplies one — PII, hidden unless show_real_name"
+        boolean show_real_name "default false — anonymous/pseudonymous by default (FR-16.2)"
         string phone_number_hash
         string email
         int reputation_score
+        uuid barangay_id FK "nullable — citizen's self-selected home barangay, not in the original ER doc"
         timestamptz created_at
     }
     ROLE {
@@ -92,6 +95,12 @@ erDiagram
         uuid organization_id FK
     }
 ```
+
+**Design note — `username` is the public identity, `display_name` is protected PII:** every other user-facing surface (comments, reactions, the transparency feed) reads `username`, never `display_name` — this is what makes FR-16.2's "anonymous by default" a schema-level guarantee rather than a UI convention someone can forget to apply on a new screen. `display_name` (the real name a provider like Google/Facebook supplies) is only ever rendered when `show_real_name = true`, and stays classified alongside `email`/`phone_number_hash` in the PII data class from [Security — Data Protection](09-security.md#data-protection).
+
+**Design note — `barangay_id` is self-selected, not GPS-resolved:** the original design assumed a citizen's barangay would only ever be resolved from GPS at report-submission time (FR-4.1, `resolve_barangay()`), which needs `BarangayBoundary` polygon data to work at all. Before that data exists for a tenant, `resolve_barangay()` has nothing to match against and always returns null — so a citizen would never get routed to a barangay, and every report would sit with `barangay_id = null` indefinitely. This column lets the citizen pick their own "home" barangay from a plain list instead, which the client then sends explicitly at submission time; `report_before_insert` only falls back to GPS resolution when this wasn't supplied, so nothing here needs to change once real boundary data is imported.
+
+**Design note — OAuth accounts get a username post-auth, not during:** Google/Apple/Facebook don't collect a username as part of their own sign-in flow, so `username` is nullable at row-creation time for those providers and enforced non-null by an application-layer gate instead (FR-16.3): first sign-in with a null `username` redirects to a mandatory completion screen before any other authenticated route is reachable, same enforcement pattern as the router's existing `_verifiedOnly` redirect guard. Email/OTP signup collects it directly in the signup form, so this gate never triggers for that provider.
 
 **Design note — scoped role assignments, not global roles:** `UserRoleAssignment` carries an optional `scope_barangay_id`/`scope_department_id` rather than roles being purely global-per-organization. This is what lets one user be, e.g., Barangay Staff for Barangay A only, while another is City Hall Administrator across the whole City — and it's what the RBAC engine in [Security](09-security.md#authorization-model) evaluates against. A flat "role per organization" model (rejected) would force one of two bad outcomes: over-broad access (any Barangay Staff sees all barangays) or a proliferation of organization-per-barangay tenants (defeats the point of the City tenant).
 
@@ -179,6 +188,8 @@ erDiagram
         uuid duplicate_of_report_id FK "nullable"
         float ai_validation_confidence
         string priority
+        uuid verified_by_user_id FK "nullable — Barangay Staff who Verified (FR-5.2/5.5)"
+        timestamptz verified_at "nullable — set once, never cleared by later workflow states (FR-19.1)"
         timestamptz sla_due_at
         timestamptz created_at
     }
@@ -215,13 +226,22 @@ erDiagram
         uuid id PK
         uuid report_id FK
         string kind "citizen|before|after"
+        string media_type "photo|video (FR-20.2) — not in the original ER doc"
         string blob_url
+        int sequence "0-based order among a report's citizen photos (FR-1.2); 0 for anything else"
+        int duration_seconds "nullable — video only, enforces FR-20.4's 3-minute cap"
         geography captured_at_location "nullable"
         timestamptz captured_at
     }
 ```
 
 **Design note — `Report` references a `WorkflowInstance` (1:1) rather than embedding status directly:** the report's current status is always read through its `WorkflowInstance.current_state`, not a duplicated `status` column on `Report` itself. This avoids the classic bug class where a workflow-engine-driven status and a denormalized status column on the domain entity drift out of sync. The `Report` table stays focused on domain data (location, category, attachments); the Workflow Engine owns state and transitions exclusively.
+
+**Design note — `verified_at` is a one-way flag, not derived from `current_state_code`:** it would be tempting to compute "is this report verified" from whether `current_state_code` has advanced past the Barangay-review checkpoint — but that list of qualifying states would need to be kept in sync by hand every time the workflow gains a new state, and a rejected-then-somehow-reopened report could accidentally read as verified depending on exactly which states are on that list. Recording the fact explicitly, once, at the moment FR-5.2's Verify action fires (and never clearing it) is simpler and can't drift. Same reasoning as `current_state_code` itself being a deliberate denormalization, below.
+
+**Design note — `kind = 'citizen'` can have multiple rows per report (FR-1.2):** a report can carry several citizen photos (Facebook-album style), so there's deliberately no unique constraint on `(report_id, kind)` — `sequence` is what makes multiple `'citizen'`/`'photo'` rows orderable and distinguishable. A citizen video is still always exactly one row (FR-20.2's mutual exclusion with photos is enforced client-side, not by a DB constraint).
+
+**Design note — `duration_seconds` is a stored fact, not just a client-side check:** FR-20.4's 3-minute cap is enforced client-side before upload (so a citizen never waits through a full upload only to be rejected), but storing the actual duration server-side means a `check` constraint can reject an upload that bypassed or lied to the client check — the same "don't trust the client alone" posture as tenant isolation elsewhere in this doc, applied to a much lower-stakes case.
 
 **Design note — GPS as `geography`, not two floats:** using PostGIS `GEOGRAPHY(Point, 4326)` rather than separate `latitude`/`longitude` columns is what makes FR-3.1's radius-based duplicate search and FR-4.1's point-in-polygon barangay resolution simple, correct, and index-accelerated (`GIST` index) queries rather than manually implemented haversine math in application code — the latter is a common source of subtle correctness bugs (e.g., mishandling the antimeridian, or radius math that's wrong at scale) that PostGIS has already solved and battle-tested.
 
@@ -233,6 +253,52 @@ erDiagram
 
 **Open flag — two categories may describe the same physical issue:** the submitted catalog includes both "Broken Streetlights" (Infrastructure & Roads) and "Street Lighting Safety Concerns" (Public Safety & Peace) — acknowledged as overlapping in the source list itself. Because FR-3.1's duplicate check matches "for the same category," two citizens reporting the same broken streetlight under these two different categories won't be caught as duplicates. Not resolved in this change — either merge into one category with `is_priority` covering both intents, or accept the dedup gap for this specific pair. Worth a decision before this ships, not urgent for the schema itself.
 
+### 5. Community Engagement (reactions & comments) `[PROPOSED — see FR-17/FR-18]`
+
+```mermaid
+erDiagram
+    REPORT ||--o{ REPORT_REACTION : has
+    REPORT ||--o{ REPORT_COMMENT : has
+    REPORT_COMMENT ||--o{ COMMENT_FLAG : has
+    REPORT_REACTION }o--|| USER_ACCOUNT : cast_by
+    REPORT_COMMENT }o--|| USER_ACCOUNT : authored_by
+    COMMENT_FLAG }o--|| USER_ACCOUNT : flagged_by
+
+    REPORT_REACTION {
+        uuid id PK
+        uuid organization_id FK
+        uuid report_id FK
+        uuid user_id FK "never nullable — Guests cannot react, FR-17.1"
+        string reaction_kind "support | dispute"
+        text dispute_reason "nullable, required when reaction_kind = dispute (FR-17.3)"
+        timestamptz created_at
+    }
+    REPORT_COMMENT {
+        uuid id PK
+        uuid organization_id FK
+        uuid report_id FK
+        uuid user_id FK "never nullable — Guests cannot comment, FR-18.1"
+        text body
+        boolean is_hidden "default false"
+        uuid hidden_by_user_id FK "nullable, Barangay Staff who hid it"
+        string hidden_reason "nullable"
+        timestamptz created_at
+    }
+    COMMENT_FLAG {
+        uuid id PK
+        uuid comment_id FK
+        uuid flagged_by_user_id FK
+        string reason
+        timestamptz created_at
+    }
+```
+
+**Design note — one reaction per (report, user), not a reaction log:** `REPORT_REACTION` has a unique constraint on `(report_id, user_id)` — casting a new reaction updates the existing row rather than inserting a second one. A user holding both "support" and "dispute" on the same report simultaneously isn't a real state per FR-17.1, so the schema doesn't allow representing it.
+
+**Design note — flag-then-review, not delete-then-forget:** `REPORT_COMMENT.is_hidden` is a flag, not a delete — a hidden comment's row (and its author) is preserved for the audit trail (FR-10, FR-18.3), consistent with how `WORKFLOW_EVENT` is never deleted either. `COMMENT_FLAG` is append-only, same reasoning as `WORKFLOW_EVENT` — no update/delete path should exist for it at the application layer.
+
+**Design note — reuses Barangay Staff, not a new moderation role:** flagged comments surface to the same Barangay Staff role that already reviews reports (FR-5), scoped to their barangay via the existing `scope_barangay_id` role assignment — no new `ROLE` value, no new RBAC scope concept. Consistent with FR-18.2's "reuse the human backstop that already exists" framing.
+
 ## Indexing strategy (MVP-critical)
 
 | Index | Purpose |
@@ -243,6 +309,9 @@ erDiagram
 | `workflow_event(workflow_instance_id, occurred_at)` | Audit trail retrieval for a single case |
 | `user_role_assignment(user_id, organization_id)` | Auth/permission resolution on every authenticated request — must be fast, it's on the hot path |
 | `barangay_category_config(barangay_id, category_id)` UNIQUE | Override lookup at submission time (FR-4.2/FR-15.2) — one row max per (barangay, category) pair |
+| `report_reaction(report_id, user_id)` UNIQUE | Enforces one reaction per user per report (FR-17.1); also the lookup for "did I already react" on report detail load |
+| `report_comment(report_id, created_at)` | Comment thread retrieval for a single report, chronological |
+| `comment_flag(comment_id)` | Barangay Staff review queue lookup (FR-18.2) |
 
 **Deliberate denormalization called out:** to avoid an expensive join to `WorkflowInstance`/`WorkflowState` on every dashboard query, `Report` maintains a denormalized `current_state_code` column, updated transactionally in the same write as the `WorkflowEvent` insert. This is a standard CQRS-adjacent read-optimization, not a violation of "status lives in the workflow engine" — the `WorkflowInstance` remains the source of truth; the denormalized column is a cache invalidated within the same transaction, never written independently.
 

@@ -17,17 +17,22 @@
 | `/auth/guest` | POST | Issue a short-lived, unauthenticated-but-rate-limited token for Guest report submission (FR-1.1) |
 | `/auth/google` | POST | Exchange a Google ID token for a platform session |
 | `/auth/apple` | POST | Exchange an Apple identity token for a platform session |
+| `/auth/facebook` | POST | Exchange a Facebook access token for a platform session (FR-16.1) |
 | `/auth/email/request-otp` | POST | Send email OTP |
 | `/auth/phone/request-otp` | POST | Send SMS OTP |
 | `/auth/{provider}/verify-otp` | POST | Verify OTP, issue session |
 | `/auth/refresh` | POST | Refresh an access token using a refresh token |
 | `/auth/logout` | POST | Revoke current session |
+| `/users/me/username` | PATCH | Set (first-time OAuth completion, FR-16.3) or change (FR-16.5, cooldown-limited) the caller's username |
+| `/users/me/settings` | PATCH | Toggle `showRealName` (FR-16.2) and other self-service account settings |
+
+Note: a session issued by `/auth/google`, `/auth/apple`, or `/auth/facebook` for a first-time account has `username: null` in its profile until `PATCH /users/me/username` succeeds. The client is expected to treat `null` as "route to the username-completion screen before anything else" (FR-16.3) — this is a client-side redirect gate, not a server-enforced block on other endpoints, so it needs to actually be implemented in the router, not assumed.
 
 ## Reports (Incident Reporting module)
 
 | Endpoint | Method | Actor | Purpose |
 |---|---|---|---|
-| `/reports` | POST | Guest, Verified Citizen | Submit a new report (FR-1). Multipart: metadata JSON + photo(s) |
+| `/reports` | POST | Guest, Verified Citizen | Submit a new report (FR-1). Multipart: metadata JSON + photo(s) or one video (≤3min, client-compressed — FR-20.2/20.3) |
 | `/reports/{id}` | GET | Submitter, assigned staff/worker, admins in scope | Fetch full report detail, including current workflow state and audit trail |
 | `/reports/{id}/confirm` | POST | Submitter | Confirm resolution (FR-8.2 → `Closed`) |
 | `/reports/{id}/dispute` | POST | Submitter | Dispute resolution (FR-8.2 → reopened) |
@@ -40,6 +45,15 @@
 | `/reports/{id}/assign` | POST | Department Head/Staff | Assign to a Worker (FR-6.1) |
 | `/reports/{id}/transition` | POST | Worker (assigned only) | Generic state transition through the Workflow Engine (FR-6.3): body specifies target state + required evidence refs (photo attachment IDs) |
 | `/departments/{id}/workload` | GET | Department Head | Team workload view |
+| `/reports/{id}/reactions` | POST | Verified Citizen | Cast/replace a reaction (FR-17.1): body `{ kind: "support" \| "dispute", reason?: string }`, `reason` required when `kind: "dispute"` (FR-17.3) |
+| `/reports/{id}/reactions` | DELETE | Verified Citizen (own reaction only) | Remove the caller's own reaction |
+| `/reports/{id}/comments` | GET | Any (public, same visibility as report detail) | List comments on a report (FR-18.1) |
+| `/reports/{id}/comments` | POST | Verified Citizen | Post a comment (FR-18.1, rate-limited per FR-18.4) |
+| `/comments/{id}/flag` | POST | Any, including Guest | Flag a comment with a reason (FR-18.2) |
+| `/comments/{id}/hide` | POST | Barangay Staff (scoped to the comment's report's barangay) | Hide a flagged comment (FR-18.3) — hides, does not delete |
+| `/barangays/{id}/flagged-comments` | GET | Barangay Staff/Admin (scoped) | Review queue for flagged comments, mirrors `/barangays/{id}/queue`'s pattern for reports |
+
+Note: this reuses the word "dispute" for two unrelated concepts — `POST /reports/{id}/dispute` (above, FR-8.2: the *submitter* contesting that their report was actually resolved) and a `dispute`-kind reaction (FR-17.1: *any* verified citizen contesting a report's accuracy). Same English word, different actors, different endpoints, different meaning — flagged here so it isn't assumed to be the same feature during implementation.
 
 Note: `POST /reports` shall reject with `422` (category disabled for the resolved barangay) if the submitted `categoryId` has `is_enabled: false` in `BarangayCategoryConfig` for the barangay resolved from the submitted GPS coordinate (FR-15.3) — checked server-side, since the category is picked before the barangay is known client-side.
 
@@ -96,9 +110,12 @@ Content-Type: multipart/form-data
   "status": "PendingAIValidation",
   "categoryId": "b3f...",
   "createdAt": "2026-07-26T08:15:00Z",
-  "trackingUrl": "https://app.fixmytown.gov.ph/reports/9a12..."
+  "trackingUrl": "https://app.fixmytown.gov.ph/reports/9a12...",
+  "verifiedAt": null
 }
 ```
+
+`verifiedAt` is always present (null until Barangay Staff verifies, an ISO timestamp after — FR-5.5) on every report representation: this sample, `/reports/{id}`, `/reports?mine=true`, and `/reports/nearby`. The client renders the "Verified" badge (FR-19.1) from `verifiedAt != null` alone — never from `status`, since verification and workflow progress are independent (FR-19.3).
 
 ## Sample: error response (validation failure)
 
@@ -111,7 +128,9 @@ Content-Type: application/problem+json
   "status": 422,
   "errors": [
     { "field": "location", "message": "GPS location is required." },
-    { "field": "photos", "message": "At least one photo is required." }
+    { "field": "media", "message": "A photo or video is required." },
+    { "field": "media", "message": "Video must be 3 minutes or shorter." },
+    { "field": "description", "message": "Description must be 280 characters or fewer." }
   ]
 }
 ```

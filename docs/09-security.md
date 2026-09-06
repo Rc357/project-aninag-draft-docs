@@ -4,7 +4,9 @@ Government-adjacent products carry a different trust bar than typical consumer S
 
 ## Authentication
 
-- Supported identity providers at MVP: Guest (unauthenticated, rate-limited token), Google, Apple, Email + OTP, Phone + OTP (per FR/PRD). Government Single Sign-On (e.g., a future PhilSys/national ID integration) is reserved as a `[FUTURE]` provider — the auth abstraction (see below) is provider-pluggable specifically so this doesn't require an auth-model rewrite later.
+- Supported identity providers at MVP: Guest (unauthenticated, rate-limited token), Google, Apple, Email + OTP, Phone + OTP, Facebook (per FR-16.1). Government Single Sign-On (e.g., a future PhilSys/national ID integration) is reserved as a `[FUTURE]` provider — the auth abstraction (see below) is provider-pluggable specifically so this doesn't require an auth-model rewrite later.
+- Facebook Login specifically requires Meta's App Review for most permissions beyond basic profile — an external approval dependency with its own timeline, not something the auth abstraction's pluggability can shortcut.
+- A user's `username` (public-facing) and `display_name` (real name, PII) are never the same field — see [Database Design's design note on this](07-database-design.md#2-identity--access) — which is what keeps the anonymity-by-default policy (FR-16.2) a schema guarantee rather than a per-screen convention.
 - All non-guest sessions issue a short-lived JWT access token (target: 15 minutes) plus a longer-lived, rotating refresh token stored server-side (revocable) — short access-token life bounds the damage window of a leaked token; server-side-revocable refresh tokens mean a compromised device's access can be cut off immediately, which a pure-JWT-everywhere design cannot do.
 - Guest tokens are scoped narrowly: they can create a report and check its status by tracking ID, nothing else. They are never granted a role claim.
 - Phone numbers and emails are stored hashed for lookup/dedup purposes with the plaintext encrypted separately (not both stored in the clear) — this limits blast radius if the lookup index were ever exposed without the encryption keys.
@@ -45,7 +47,7 @@ Layered, not single-mechanism, per FR-2/NFR — no single control is assumed suf
 | AI spam/duplicate-image-hash detection | Repeated/recycled images, obviously irrelevant photos |
 | AI duplicate detection (geospatial + visual) | Report-count inflation, whether malicious or well-intentioned over-reporting |
 | Citizen reputation score | Cumulative signal across a user's history — a single false report is normal citizen behavior, a pattern is not |
-| Community confirmation (future: neighbors can corroborate) | Crowd-sourced validation signal for ambiguous cases |
+| Community reactions (FR-17: support/dispute) | Crowd-sourced validation signal for ambiguous cases — formerly listed here as a future item, now specified. A `dispute` reaction requires a written reason (FR-17.3) specifically to raise the cost of coordinated dispute-brigading against a legitimate report |
 | Manual verification (Barangay Staff, FR-5.2) | Final human backstop — AI and heuristics inform priority/triage, a human always retains override authority (FR-2.5) |
 
 **Deliberate design stance:** no automated control (spam score, AI confidence, reputation) is ever allowed to *permanently* reject a citizen report without a human-reviewable path — see FR-2.5. For a government service, silently and permanently denying a citizen's ability to report an issue based on an opaque automated score is a legitimacy risk, not just a UX rough edge.

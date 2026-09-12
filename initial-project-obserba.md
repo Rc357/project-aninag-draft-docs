@@ -16,7 +16,7 @@ Always prioritize scalability, maintainability, configurability, and enterprise 
 
 # Project Codename
 
-Project FixMyTown
+Project Obserba
 
 (Formerly codenamed Project Aninag during initial drafting. A permanent product/company name will be decided later.)
 
@@ -24,7 +24,7 @@ Project FixMyTown
 
 # Vision
 
-Project FixMyTown is a cloud-native Local Government Operations Platform.
+Project Obserba is a cloud-native Local Government Operations Platform.
 
 The first module is a Citizen Incident Reporting System.
 

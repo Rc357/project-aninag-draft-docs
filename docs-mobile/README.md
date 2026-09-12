@@ -1,4 +1,4 @@
-# Project FixMyTown — Mobile Development Documentation
+# Project Obserba — Mobile Development Documentation
 
 This folder documents the **mobile surfaces only**: the Flutter **Citizen app** and **Worker app** defined in the platform [PRD](../docs/03-prd.md). It is deliberately separate from [`../docs/`](../docs/README.md), which covers the whole-platform product/architecture story (backend, database, security, AI). Web/admin dashboard development will get its own doc set alongside this one once that stack work starts.
 
@@ -32,4 +32,4 @@ The high-fidelity screen concepts referenced throughout this doc set (especially
 
 ## Source
 
-Traces back to the founding brief ([`initial-project-fixmytown.md`](../initial-project-fixmytown.md)) and the platform documentation suite in [`../docs/`](../docs/README.md), particularly [PRD](../docs/03-prd.md), [Functional Requirements](../docs/04-functional-requirements.md), [Non-Functional Requirements](../docs/05-non-functional-requirements.md), [Architecture](../docs/06-architecture.md), and [API Specification](../docs/08-api-specification.md).
+Traces back to the founding brief ([`initial-project-obserba.md`](../initial-project-obserba.md)) and the platform documentation suite in [`../docs/`](../docs/README.md), particularly [PRD](../docs/03-prd.md), [Functional Requirements](../docs/04-functional-requirements.md), [Non-Functional Requirements](../docs/05-non-functional-requirements.md), [Architecture](../docs/06-architecture.md), and [API Specification](../docs/08-api-specification.md).

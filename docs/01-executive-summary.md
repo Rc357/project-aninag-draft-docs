@@ -1,6 +1,6 @@
 # Executive Summary
 
-**Project FixMyTown** (formerly codenamed *Aninag*, Filipino for "translucence" — the quality of being able to see through something clearly) is a cloud-native **Local Government Operations Platform** for the Philippines.
+**Project Obserba** (formerly codenamed *Aninag*, Filipino for "translucence" — the quality of being able to see through something clearly) is a cloud-native **Local Government Operations Platform** for the Philippines.
 
 ## The problem
 
@@ -8,7 +8,7 @@ Philippine LGUs — cities, municipalities, and their constituent barangays — 
 
 ## The solution
 
-Project FixMyTown is built as a **multi-tenant operating system for LGUs**, not a single-purpose reporting app. The first shipped module — **Citizen Incident Reporting** — lets residents report issues (broken roads, flooding, garbage, fallen trees, broken streetlights, water leaks, fire, crime, and more) with photo and GPS evidence, have them AI-validated and de-duplicated, automatically routed to the correct barangay and department, and tracked through resolution with full audit history.
+Project Obserba is built as a **multi-tenant operating system for LGUs**, not a single-purpose reporting app. The first shipped module — **Citizen Incident Reporting** — lets residents report issues (broken roads, flooding, garbage, fallen trees, broken streetlights, water leaks, fire, crime, and more) with photo and GPS evidence, have them AI-validated and de-duplicated, automatically routed to the correct barangay and department, and tracked through resolution with full audit history.
 
 The differentiator is not the reporting form — competitors can build that in a sprint. It is the **underlying platform**: a configurable workflow engine, a multi-level government data model (Organization → City → Barangay → Department → Worker), and a multi-tenant architecture that lets a single deployment serve one city today and hundreds tomorrow, without a rewrite. Every future module (permits, business licensing, disaster response, inspections, payments, executive dashboards) is "just another workflow" running on the same engine.
 

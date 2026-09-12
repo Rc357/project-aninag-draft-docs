@@ -4,7 +4,7 @@
 
 - **Style:** REST over HTTPS, JSON bodies. GraphQL was considered and rejected for MVP — the client set (a handful of purpose-built screens per role) doesn't have the heterogeneous query-shape problem GraphQL solves, and REST's simplicity/tooling maturity wins for a small team; revisit only if the Executive Dashboard's `[FUTURE]` cross-tenant analytics needs genuinely justify it.
 - **Versioning:** URL path versioning, `/api/v1/...`. Chosen over header-based versioning for debuggability (visible in logs, curl-able without extra headers) — appropriate given the API has a small, controlled set of first-party clients, not a public third-party developer ecosystem yet.
-- **Base URL shape:** `https://api.fixmytown.gov.ph/v1/...` (illustrative — actual domain pending product naming).
+- **Base URL shape:** `https://api.obserba.gov.ph/v1/...` (illustrative — actual domain pending product naming).
 - **Auth:** Bearer JWT in `Authorization` header, issued by the Identity module. Tenant (`organization_id`) and role/scope claims are embedded in the token, never accepted as a request parameter (see [Security — Tenant Isolation](09-security.md#tenant-isolation)).
 - **Pagination:** cursor-based (`?cursor=...&limit=...`), not offset — offset pagination degrades on large, frequently-mutated queues like the Barangay report queue.
 - **Errors:** RFC 7807 Problem Details (`application/problem+json`) — `type`, `title`, `status`, `detail`, `instance`, plus an `errors` array for field-level validation failures. Standardizing on this now avoids each client team inventing its own error-shape parsing.
@@ -110,7 +110,7 @@ Content-Type: multipart/form-data
   "status": "PendingAIValidation",
   "categoryId": "b3f...",
   "createdAt": "2026-07-26T08:15:00Z",
-  "trackingUrl": "https://app.fixmytown.gov.ph/reports/9a12...",
+  "trackingUrl": "https://app.obserba.gov.ph/reports/9a12...",
   "verifiedAt": null
 }
 ```
@@ -123,7 +123,7 @@ Content-Type: multipart/form-data
 422 Unprocessable Entity
 Content-Type: application/problem+json
 {
-  "type": "https://api.fixmytown.gov.ph/errors/validation",
+  "type": "https://api.obserba.gov.ph/errors/validation",
   "title": "One or more fields are invalid.",
   "status": 422,
   "errors": [

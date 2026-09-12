@@ -2,16 +2,22 @@
 
 This translates the visual language from the [Mobile UI Concepts artifact](https://claude.ai/code/artifact/e745faa6-fbdc-46c4-ab0d-0a7b8461c9d5) into implementable Flutter tokens and a shared widget library (`core/design_system`), so "what the mockup shows" and "what `ThemeData` produces" cannot silently drift apart.
 
-## One committed theme, not light/dark
+## Light and dark themes
 
-The mockup deliberately committed to a single fixed visual language regardless of viewer theme preference (see the artifact's own note on this). That decision carries into the app: **`ThemeData` ships one theme, not a `ThemeData.light()`/`ThemeData.dark()` pair.** This isn't an oversight to fix later — for a civic/public-service app used briefly and functionally (report an issue, check a status), a single, consistent, high-contrast presentation is more valuable than accommodating system dark-mode preference, and it removes an entire class of contrast/legibility QA (every color combination validated once, not twice). Revisit only if pilot user feedback specifically asks for it.
+Reversed from an earlier decision to ship one committed theme only ("a single, consistent, high-contrast presentation beats accommodating system dark-mode preference") — dark mode was explicitly requested, so this now needs to actually work, not stay a documented non-goal.
+
+**Implementation shape:** `ObsColors`'s fields are `static get`, not `static const`/`static final` — each branches on a package-level `Brightness` value (`ObsColors.setBrightness(...)`), so every existing `ObsColors.ink`-style call site across the app kept working unchanged (a getter reads with the same syntax as a field). `ObsText`'s fields and `AppTheme.theme` are `static get` for the same reason — a `final` memoizes on first access for the process lifetime and would never pick up a later brightness change. The cost of this approach: nothing referencing these tokens can be `const` anymore (they're not compile-time constants), which meant removing `const` from every affected widget across the app — a large but entirely mechanical pass, `flutter analyze` enumerates each site precisely.
+
+**Triggering a rebuild:** since color references are plain static reads, not `Theme.of(context)` lookups, changing `ObsColors`'s internal brightness value doesn't by itself cause any widget to rebuild. `App` (the root widget) resolves the citizen's Light/Dark/System choice (`themeModeProvider`, Profile screen) against the platform's actual brightness when System is selected, calls `ObsColors.setBrightness(...)`, and keys the whole `MaterialApp.router` on the resolved brightness — forcing a full remount whenever it changes, so every descendant's `build()` re-runs and picks up the new values. Trade-off: switching themes resets in-progress navigation state (scroll position, unsaved form input) — acceptable for a rare settings action, not something to design around.
+
+**Dark palette:** designed alongside the light one, not a blanket "invert everything." Status color tints (`amberTint`/`greenTint`/etc.) flip from light pastel backgrounds to dark desaturated ones rather than staying light pastels on a dark surface; `brandInk` lerps toward white instead of black for the same contrast-direction reason. See `obs_colors.dart`'s doc comments for the exact reasoning per token.
 
 ## Color tokens
 
 Only 3 colors are independently chosen — `ink` (text), `surface` (background), `brand` (accent). Everything else is either derived from one of those three, a structural neutral needed regardless of brand (`muted`/`line`), or a semantic status color. This mirrors the reference app (bluehive-project/AfexVisitor2025), which derives its own tint/shade family from a single primary hue rather than hand-picking a separate hex per variant.
 
 ```dart
-class FmtColors {
+class ObsColors {
   static const ink        = Color(0xFF16211D);
   static const surface    = Color(0xFFFFFFFF);
   static const brand      = Color(0xFF06AED5); // boracay blue
@@ -55,12 +61,12 @@ Weights were dialed back from an earlier pass (was: display/title/label all 800,
 
 No separate monospace font asset is bundled — `FontFeature.tabularFigures()` on Inter satisfies the tabular-numeral need (SLA timers, tracking IDs) without the app-size cost of an additional font family.
 
-`FmtText`'s fields are `static final`, not `static const` — `GoogleFonts.inter(...)` lazily registers/loads the font file on first call, so it isn't a const constructor. Anything that directly embeds an `FmtText` value in an otherwise-`const` widget tree (the app's `ThemeData.textTheme`/`appBarTheme` do this) has to drop that local `const`, same as any other non-const value.
+`ObsText`'s fields are `static get`, not `static const`/`static final` — `GoogleFonts.inter(...)` lazily registers/loads the font file on first call so it isn't a const constructor, and a `final` would memoize the very first brightness's colors forever, never picking up a dark-mode change (see "Light and dark themes" above). Anything that directly embeds an `ObsText` value in an otherwise-`const` widget tree (the app's `ThemeData.textTheme`/`appBarTheme` do this) has to drop that local `const`, same as any other non-const value.
 
-**Sizes bumped from an earlier pass** (was: display 22/title 15.5/body 13/label 10.5/caption 11/mono 12) after a direct readability complaint — those numbers ran meaningfully smaller than typical app body text (Material's own `bodyLarge` default is 16sp; iOS HIG recommends 17pt minimum for body copy), which hits older/low-vision users hardest. The bigger problem wasn't `FmtText` itself, though — most on-screen text was hardcoded `TextStyle(fontSize: N)` scattered across individual widgets, entirely bypassing these shared roles (11, 9.8, 10.5, 12.5... each widget inventing its own slightly-different small number). Fixed at the root with a new token layer:
+**Sizes bumped from an earlier pass** (was: display 22/title 15.5/body 13/label 10.5/caption 11/mono 12) after a direct readability complaint — those numbers ran meaningfully smaller than typical app body text (Material's own `bodyLarge` default is 16sp; iOS HIG recommends 17pt minimum for body copy), which hits older/low-vision users hardest. The bigger problem wasn't `ObsText` itself, though — most on-screen text was hardcoded `TextStyle(fontSize: N)` scattered across individual widgets, entirely bypassing these shared roles (11, 9.8, 10.5, 12.5... each widget inventing its own slightly-different small number). Fixed at the root with a new token layer:
 
 ```dart
-class FmtFontSize {
+class ObsFontSize {
   static const xs = 12.0;      // floor — status chips, Verified badge, never smaller
   static const sm = 13.0;      // captions, meta text, timestamps
   static const md = 14.0;      // secondary reading text
@@ -71,13 +77,13 @@ class FmtFontSize {
 }
 ```
 
-`FmtText`'s own roles are now built from these tokens rather than their own numbers, and every other hardcoded `fontSize` in the app was migrated to reference one of them too — the same relationship `FmtSpace`/`FmtRadius` already have to raw spacing/corner values, applied to type. A future one-off `Text` widget should reach for `FmtFontSize.*`, never a bare number.
+`ObsText`'s own roles are now built from these tokens rather than their own numbers, and every other hardcoded `fontSize` in the app was migrated to reference one of them too — the same relationship `ObsSpace`/`ObsRadius` already have to raw spacing/corner values, applied to type. A future one-off `Text` widget should reach for `ObsFontSize.*`, never a bare number.
 
 ## Spacing & radius scale
 
 ```dart
-class FmtSpace { static const xs=4.0, sm=8.0, md=12.0, lg=16.0, xl=24.0, xxl=32.0; }
-class FmtRadius { static const tile=13.0, card=14.0, input=8.0, pill=999.0; }
+class ObsSpace { static const xs=4.0, sm=8.0, md=12.0, lg=16.0, xl=24.0, xxl=32.0; }
+class ObsRadius { static const tile=13.0, card=14.0, input=8.0, pill=999.0; }
 ```
 
 Applied via `Row`/`Column`/`Wrap` `spacing`/`runSpacing` (Flutter 3.27+) or explicit `SizedBox` gaps between siblings — never accumulated margins on individual children, for the same reason the web design system avoids margin-collapse ambiguity: one source of truth for the gap between two elements, not two children each contributing half.
@@ -86,7 +92,7 @@ Applied via `Row`/`Column`/`Wrap` `spacing`/`runSpacing` (Flutter 3.27+) or expl
 
 | Widget                                        | Maps to mockup element                     | Key behavior                                                                                                                                                                                                                                                       |
 | --------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `FmtPrimaryButton` / `FmtOutlineButton` | `.btn-primary` / `.btn-outline`            | Full-width by default, 50dp min height; pill/stadium shape (`FmtRadius.pill`), not `FmtRadius.input` — buttons and form controls deliberately use different radii, a structural cue borrowed from reviewing bluehive-project. Disabled state uses a desaturated fill, never just lowered opacity (opacity alone can fail contrast checks) |
+| `ObsPrimaryButton` / `ObsOutlineButton` | `.btn-primary` / `.btn-outline`            | Full-width by default, 50dp min height; pill/stadium shape (`ObsRadius.pill`), not `ObsRadius.input` — buttons and form controls deliberately use different radii, a structural cue borrowed from reviewing bluehive-project. Disabled state uses a desaturated fill, never just lowered opacity (opacity alone can fail contrast checks) |
 | `StatusChip`                                  | `.chip-pending/-progress/-resolved/-alert` | Takes a `ReportStatus` enum, not a raw color — prevents a screen from inventing a new ad hoc status color                                                                                                                                                          |
 | `VerifiedBadge`       | new — no mockup element yet                | Renders from `report.verifiedAt != null` only, never from `ReportStatus` — takes a separate slot alongside `StatusChip` on `ReportCard`/detail/`ReportFeedPost`, not a replacement for it (FR-19.3); absent entirely (not a greyed-out variant) when unverified, so it can't be mistaken for a "not verified yet" badge |
 | `ReportFeedPost`      | new — no mockup element yet                | The home-feed "post" card (FR-20.1), styled like a Facebook post: header (round category "avatar", category name, timestamp, verified badge, status chip), description, `ReportMediaCarousel`, a divider, then an evenly-split action row (`SupportButton` + comment-to-detail button). Separate from `ReportCard` (My Reports' compact list style) — different information density for a different job, not a redesign of one into the other |

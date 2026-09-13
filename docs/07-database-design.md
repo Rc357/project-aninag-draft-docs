@@ -79,6 +79,7 @@ erDiagram
         string email
         int reputation_score
         uuid barangay_id FK "nullable — citizen's self-selected home barangay, not in the original ER doc"
+        timestamptz deletion_requested_at "nullable — FR-16.6, set when the citizen requests account deletion; a flag for an async job to process, not a hard delete itself"
         timestamptz created_at
     }
     ROLE {
